@@ -126,6 +126,7 @@ store_context() {
     fi
     
     cp "$KUBE_CONFIG" "$context_path"
+    chmod 600 "$context_path"
     echo -e "${GREEN}Context '$name' stored successfully${NC}"
 }
 
@@ -160,7 +161,8 @@ current-context: ""
 preferences: {}
 users: []
 EOF
-    
+    chmod 600 "$context_path"
+
     echo -e "${GREEN}New empty context '$name' created successfully${NC}"
     echo -e "${BLUE}You can now configure this context using kubectl commands and then activate it with:${NC}"
     echo -e "  kubeflip activate $name"
@@ -255,6 +257,7 @@ current-context: ""
 preferences: {}
 users: []
 EOF
+        chmod 600 "$context_path"
         echo -e "${GREEN}New empty context '$name' created${NC}"
     fi
     

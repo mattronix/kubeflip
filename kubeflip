@@ -320,7 +320,7 @@ remove_context() {
 main() {
     init_kubeflip
     
-    case "${1:-help}" in
+    case "${1:-current}" in
         activate)
             activate_context "$2"
             ;;

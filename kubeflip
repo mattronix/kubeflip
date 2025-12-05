@@ -189,18 +189,18 @@ activate_context() {
         exit 1
     fi
     
-    # Backup current config if it exists and is different from what we're activating
-    if [[ -f "$KUBE_CONFIG" ]]; then
-        local backup_path="$KUBEFLIP_DIR/backup-$(date +%Y%m%d-%H%M%S)"
-        cp "$KUBE_CONFIG" "$backup_path"
-        echo -e "${YELLOW}Current config backed up to: $backup_path${NC}"
+    # Store current config as "current" before switching if it's not a symlink
+    if [[ -f "$KUBE_CONFIG" && ! -L "$KUBE_CONFIG" ]]; then
+        cp "$KUBE_CONFIG" "$CONTEXTS_DIR/current"
+        echo -e "${YELLOW}Current config stored as 'current'${NC}"
     fi
     
     # Create .kube directory if it doesn't exist
     mkdir -p "$(dirname "$KUBE_CONFIG")"
     
-    # Copy the context file to kubectl config location
-    cp "$context_path" "$KUBE_CONFIG"
+    # Remove existing config (file or symlink) and create new symlink
+    rm -f "$KUBE_CONFIG"
+    ln -s "$context_path" "$KUBE_CONFIG"
     
     # Update current context tracking
     ln -sf "$context_path" "$CURRENT_LINK"

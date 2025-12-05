@@ -72,8 +72,8 @@ COMMANDS:
     tree               Show contexts and their clusters in tree format
     current            Show the currently active context configuration
     remove <name>      Remove a stored context configuration
-    lock               Make the current context read-only
-    unlock             Make the current context writable
+    lock [name]        Make context read-only (current if no name given)
+    unlock [name]      Make context writable (current if no name given)
     lock-all           Make all contexts read-only
     unlock-all         Make all contexts writable
     help               Show this help message
@@ -342,7 +342,18 @@ remove_context() {
         echo -e "${RED}Error: Context '$name' not found${NC}"
         exit 1
     fi
-    
+
+    if is_immutable "$context_path"; then
+        echo -e "${RED}Error: Context '$name' is locked. Unlock it first with 'kubeflip unlock $name'${NC}"
+        exit 1
+    fi
+
+    # Check if this is the currently active context
+    if [[ -L "$CURRENT_LINK" && "$(readlink "$CURRENT_LINK")" == "$context_path" ]]; then
+        echo -e "${RED}Error: Cannot remove the currently active context '$name'. Switch to another context first.${NC}"
+        exit 1
+    fi
+
     echo -e "${YELLOW}Are you sure you want to remove context '$name'? (y/N)${NC}"
     read -r response
     if [[ "$response" =~ ^[yY]$ ]]; then
@@ -359,32 +370,56 @@ remove_context() {
     fi
 }
 
-# Lock current context (make immutable)
+# Lock a context (make immutable)
 lock_context() {
-    if [[ ! -L "$CURRENT_LINK" ]]; then
-        echo -e "${RED}Error: No active context set${NC}"
-        exit 1
-    fi
+    local name="$1"
+    local context_path
 
-    local context_path=$(readlink "$CURRENT_LINK")
-    local context_name=$(basename "$context_path")
+    if [[ -z "$name" ]]; then
+        # No name provided, use current context
+        if [[ ! -L "$CURRENT_LINK" ]]; then
+            echo -e "${RED}Error: No active context set and no context name provided${NC}"
+            echo "Usage: kubeflip lock [name]"
+            exit 1
+        fi
+        context_path=$(readlink "$CURRENT_LINK")
+        name=$(basename "$context_path")
+    else
+        context_path="$CONTEXTS_DIR/$name"
+        if [[ ! -f "$context_path" ]]; then
+            echo -e "${RED}Error: Context '$name' not found${NC}"
+            exit 1
+        fi
+    fi
 
     make_immutable "$context_path"
-    echo -e "${GREEN}Context '$context_name' is now locked (immutable)${NC}"
+    echo -e "${GREEN}Context '$name' is now locked (immutable)${NC}"
 }
 
-# Unlock current context (make mutable)
+# Unlock a context (make mutable)
 unlock_context() {
-    if [[ ! -L "$CURRENT_LINK" ]]; then
-        echo -e "${RED}Error: No active context set${NC}"
-        exit 1
+    local name="$1"
+    local context_path
+
+    if [[ -z "$name" ]]; then
+        # No name provided, use current context
+        if [[ ! -L "$CURRENT_LINK" ]]; then
+            echo -e "${RED}Error: No active context set and no context name provided${NC}"
+            echo "Usage: kubeflip unlock [name]"
+            exit 1
+        fi
+        context_path=$(readlink "$CURRENT_LINK")
+        name=$(basename "$context_path")
+    else
+        context_path="$CONTEXTS_DIR/$name"
+        if [[ ! -f "$context_path" ]]; then
+            echo -e "${RED}Error: Context '$name' not found${NC}"
+            exit 1
+        fi
     fi
 
-    local context_path=$(readlink "$CURRENT_LINK")
-    local context_name=$(basename "$context_path")
-
     make_mutable "$context_path"
-    echo -e "${GREEN}Context '$context_name' is now unlocked (mutable)${NC}"
+    echo -e "${GREEN}Context '$name' is now unlocked (mutable)${NC}"
 }
 
 # Lock all contexts (make immutable)
@@ -446,10 +481,10 @@ main() {
             remove_context "$2"
             ;;
         lock)
-            lock_context
+            lock_context "$2"
             ;;
         unlock)
-            unlock_context
+            unlock_context "$2"
             ;;
         lock-all)
             lock_all_contexts

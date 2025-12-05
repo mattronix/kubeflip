@@ -189,11 +189,7 @@ activate_context() {
         exit 1
     fi
     
-    # Store current config as "current" before switching if it's not a symlink
-    if [[ -f "$KUBE_CONFIG" && ! -L "$KUBE_CONFIG" ]]; then
-        cp "$KUBE_CONFIG" "$CONTEXTS_DIR/current"
-        echo -e "${YELLOW}Current config stored as 'current'${NC}"
-    fi
+
     
     # Create .kube directory if it doesn't exist
     mkdir -p "$(dirname "$KUBE_CONFIG")"

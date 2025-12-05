@@ -260,9 +260,10 @@ EOF
         chmod 600 "$context_path"
         echo -e "${GREEN}New empty context '$name' created${NC}"
     fi
-    
 
-    
+    # Ensure context file has secure permissions
+    chmod 600 "$context_path"
+
     # Create .kube directory if it doesn't exist
     mkdir -p "$(dirname "$KUBE_CONFIG")"
     

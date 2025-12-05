@@ -21,12 +21,6 @@ NC='\033[0m' # No Color
 # Ensure kubeflip directory structure exists
 init_kubeflip() {
     mkdir -p "$CONTEXTS_DIR"
-    
-    # If this is the first run and there's already a kube config, back it up
-    if [[ -f "$KUBE_CONFIG" && ! -f "$CONTEXTS_DIR/default" ]]; then
-        echo -e "${YELLOW}Backing up existing kubectl config as 'default'${NC}"
-        cp "$KUBE_CONFIG" "$CONTEXTS_DIR/default"
-    fi
 }
 
 # Display usage information
@@ -42,6 +36,7 @@ COMMANDS:
     store <name>        Store the current kubectl config with the given name
     new <name>          Create a new empty context configuration
     list               List all stored context configurations
+    tree               Show contexts and their clusters in tree format
     current            Show the currently active context configuration
     remove <name>      Remove a stored context configuration
     help               Show this help message
@@ -51,6 +46,7 @@ EXAMPLES:
     kubeflip store development
     kubeflip new staging
     kubeflip list
+    kubeflip tree
     kubeflip current
     kubeflip remove old-cluster
 
@@ -170,6 +166,71 @@ EOF
     echo -e "  kubeflip activate $name"
 }
 
+# Show contexts and their clusters in tree format
+tree_contexts() {
+    echo -e "${BLUE}kubeflip contexts tree:${NC}"
+    
+    if [[ ! -d "$CONTEXTS_DIR" || -z "$(ls -A "$CONTEXTS_DIR" 2>/dev/null)" ]]; then
+        echo -e "${YELLOW}└── No contexts found${NC}"
+        echo -e "${YELLOW}    Use 'kubeflip store <name>' to store your first context${NC}"
+        return
+    fi
+    
+    local current_context=""
+    if [[ -L "$CURRENT_LINK" ]]; then
+        current_context=$(basename "$(readlink "$CURRENT_LINK")")
+    fi
+    
+    local context_files=("$CONTEXTS_DIR"/*)
+    local total_contexts=${#context_files[@]}
+    local count=0
+    
+    for context_file in "${context_files[@]}"; do
+        if [[ -f "$context_file" ]]; then
+            local context_name=$(basename "$context_file")
+            count=$((count + 1))
+            
+            # Determine tree symbols
+            local tree_symbol="├──"
+            local cluster_prefix="│   "
+            if [[ $count -eq $total_contexts ]]; then
+                tree_symbol="└──"
+                cluster_prefix="    "
+            fi
+            
+            # Show context name with active indicator
+            if [[ "$context_name" == "$current_context" ]]; then
+                echo -e "$tree_symbol ${GREEN}$context_name${NC} ${YELLOW}(active)${NC}"
+            else
+                echo -e "$tree_symbol $context_name"
+            fi
+            
+            # Extract and show clusters from the context file
+            if command -v kubectl &> /dev/null && [[ -f "$context_file" ]]; then
+                local clusters=$(KUBECONFIG="$context_file" kubectl config get-clusters 2>/dev/null | tail -n +2 | grep -v "^$" || true)
+                if [[ -n "$clusters" ]]; then
+                    local cluster_count=0
+                    local total_clusters=$(echo "$clusters" | wc -l | tr -d ' ')
+                    while IFS= read -r cluster; do
+                        if [[ -n "$cluster" ]]; then
+                            cluster_count=$((cluster_count + 1))
+                            local cluster_tree="├──"
+                            if [[ $cluster_count -eq $total_clusters ]]; then
+                                cluster_tree="└──"
+                            fi
+                            echo -e "${cluster_prefix}${cluster_tree} ${BLUE}$cluster${NC}"
+                        fi
+                    done <<< "$clusters"
+                else
+                    echo -e "${cluster_prefix}└── ${YELLOW}(no clusters)${NC}"
+                fi
+            else
+                echo -e "${cluster_prefix}└── ${YELLOW}(unable to read clusters)${NC}"
+            fi
+        fi
+    done
+}
+
 # Activate a stored context
 activate_context() {
     local name="$1"
@@ -183,10 +244,18 @@ activate_context() {
     local context_path="$CONTEXTS_DIR/$name"
     
     if [[ ! -f "$context_path" ]]; then
-        echo -e "${RED}Error: Context '$name' not found${NC}"
-        echo "Available contexts:"
-        list_contexts
-        exit 1
+        echo -e "${YELLOW}Context '$name' not found, creating new empty context${NC}"
+        # Create a minimal kubectl config template
+        cat > "$context_path" << EOF
+apiVersion: v1
+kind: Config
+clusters: []
+contexts: []
+current-context: ""
+preferences: {}
+users: []
+EOF
+        echo -e "${GREEN}New empty context '$name' created${NC}"
     fi
     
 
@@ -259,6 +328,9 @@ main() {
             ;;
         list|ls)
             list_contexts
+            ;;
+        tree)
+            tree_contexts
             ;;
         current)
             show_current
